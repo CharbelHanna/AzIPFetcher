@@ -13,65 +13,79 @@ This PowerShell script retrieves the used and available IP addresses in specifie
 - Automatically installs required Azure PowerShell modules if not present.
 - Provides detailed error handling and user feedback.
 - Ensures the user is logged in to Azure before script execution.
+- Supports login methods for different platforms (e.g., device authentication for Unix-based systems).
+- Allows selecting the destination folder for exported files.
 
 ## Prerequisites
 
 - Azure PowerShell module installed.
-- User authenticated to Azure using `Connect-AzAccount`.
+- Read access permissions on the desired workscope.
 
 ## Parameters
 
-| Parameter         | Type    | Mandatory | Description                                                                 |
-|-------------------|---------|-----------|-----------------------------------------------------------------------------|
-| `MgGroupIds`      | Array   | No        | One or more Management Group IDs separated by commas.                      |
-| `subIds`          | Array   | No        | One or more Subscription IDs separated by commas. Use `@all` for all.      |
-| `Subpattern`      | Array   | No        | One or more Subscription name patterns separated by commas.                |
-| `ExportCSV`       | Switch  | No        | Exports the results to a CSV file.                                         |
-| `ExportJSON`      | Switch  | No        | Exports the results to a JSON file.                                        |
-| `ExportHTML`      | Switch  | No        | Exports the results to an HTML file.                                       |
+| Parameter      | Type   | Mandatory | Description                                                                              |
+| -------------- | ------ | --------- | ---------------------------------------------------------------------------------------- |
+| `MgGroupIds`   | Array  | No        | One or more Management Group IDs separated by commas.                                    |
+| `subIds`       | Array  | No        | One or more Subscription IDs separated by commas. Use `@all` for all.                    |
+| `Subpattern`   | Array  | No        | One or more Subscription name patterns separated by commas.                              |
+| `OutputFolder` | String | No        | The folder where the exported files will be saved. Defaults to the script's root folder. |
+| `ExportCSV`    | Switch | No        | Exports the results to a CSV file.                                                       |
+| `ExportJSON`   | Switch | No        | Exports the results to a JSON file.                                                      |
+| `ExportHTML`   | Switch | No        | Exports the results to an HTML file.                                                     |
 
 ## Usage
 
-### Example 1: Retrieve available IPs for specific management groups
+### Example 1: Retrieve available IPs from virtual networks under specific management groups
+
 ```powershell
-Get-AvailableIPsInVNet -MgGroupIds 'MymgGroupID1,MyMGroupID2' -Subpattern 'prod*,test*' -ExportCSV
+Get-AvailableIPsInVNet -MgGroupIds 'MymgGroupID1,MyMGroupID2' -Subpattern 'prod*,test*' -ExportCSV -OutputFolder "C:\Reports"
 ```
 
-### Example 2: Retrieve available IPs for all subscriptions
+### Example 2: Retrieve available IPs from virtual networks in all subscriptions
+
 ```powershell
-Get-AvailableIPsInVNet -subIds '@all' -ExportJSON
+Get-AvailableIPsInVNet -subIds '@all' -ExportJSON 
 ```
 
-### Example 3: Retrieve available IPs for specific subscriptions
+### Example 3: Retrieve available IPs from virtual networks inside a specific subscriptions
+
 ```powershell
-Get-AvailableIPsInVNet -subIds 'subscriptionId1,subscriptionId2' -ExportHTML
+Get-AvailableIPsInVNet -subIds 'subscriptionId1,subscriptionId2' -ExportHTML -OutputFolder "D:\Exports"
 ```
+
+The script outputs the following details for each Virtual Network and its subnets
 
 ## Output
 
-The script outputs the following details for each Virtual Network and its subnets:
+The script outputs the following details for each Virtual Network and its subnets:work Address Space
 
 - Virtual Network Name
 - Virtual Network Address Space
 - Subnet Name
-- Subnet Address Space
-- Count of Used IPs
+- Subnet Address Spaces
+- Count of Used IPs- List of Available IPs
 - List of Used IPs
-- Count of Available IPs
+- Count of Available IPs## Exported Reports
 - List of Available IPs
 
 ## Exported Reports
 
-- **CSV**: `AvailableIPsInVNET.csv`
-- **JSON**: `AvailableIPsInVNET.json`
-- **HTML**: `AvailableIPsInVNET.html`
+- **HTML**: `<OutputFolder>\AvailableIPsInVNET.html`
+- **CSV**: `<OutputFolder>\AvailableIPsInVNET_<timestamp>.csv`
+- **JSON**: `<OutputFolder>\AvailableIPsInVNET_<timestamp>.json`
+- **HTML**: `<OutputFolder>\AvailableIPsInVNET_<timestamp>.html`
 
 ## Change Log
 
 ### Version 1.2
-- Added a login check to ensure the user is logged in to Azure before proceeding with the script execution.
 
-### Version 1.1
+- Added a login check to ensure the user is logged in to Azure before proceeding with the script execution.ort for multiple subscriptions and management groups.
+- Added login methods for different platforms (e.g., device authentication for Unix-based systems).- Added filtering by subscription name patterns.
+- Added support for selecting the export file destination folder.options for CSV, JSON, and HTML.
+andling and user feedback.
+
+### Version 1.1- Bug fixes
+
 - Added support for multiple subscriptions and management groups.
 - Added filtering by subscription name patterns.
 - Added export options for CSV, JSON, and HTML.
@@ -79,8 +93,10 @@ The script outputs the following details for each Virtual Network and its subnet
 - Bug fixes.
 
 ### Version 1.0
+
 - Initial version.
 
 ## Author
 
 Charbel Hanna
+charbel_hanna@hotmail.com

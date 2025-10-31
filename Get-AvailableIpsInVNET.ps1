@@ -28,8 +28,9 @@ CHANGELOG{
         * Bug fixes
           ]
 - Version 1.2 [
- Added  login check to ensure user is logged in to Azure before proceeding with the script execution.
-          ]
+ * Added login check to ensure user is logged in to Azure before proceeding with the script execution.
+ * Added login method for different platforms (Device authentication for Unix-based systems).
+ * Added support for selecting export file destination folder.      ]
  }
 #>
 [CmdletBinding()]
