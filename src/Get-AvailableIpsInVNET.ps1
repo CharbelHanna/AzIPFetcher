@@ -46,7 +46,7 @@ param (
     [Array] $Subpattern,
     [parameter( Mandatory = $false,
         HelpMessage = "select the desired location to store the extracted output")]
-    [string]$OutputFolder = $PSScriptRoot,
+    [string]$OutputFolder,
     [Parameter(Mandatory = $false)]
     [switch]$ExportCSV,
     [Parameter(Mandatory = $false)]
@@ -54,10 +54,6 @@ param (
     [Parameter(Mandatory = $false)]
     [switch]$ExportHTML
 )
-
-
-
-
 
 # Check if user is logged in to Azure
 function Connect-azure {
@@ -69,7 +65,7 @@ function Connect-azure {
         }
         if (!(Get-AzAccessToken -ErrorAction SilentlyContinue)) {
             throw "Please authenticate to azure - Connect-AzAccount"
-}
+        }
         Write-Host "User is logged in to Azure with subscription: $($context.Subscription.Name)" -ForegroundColor Green
     }
     catch {
@@ -83,7 +79,6 @@ function Connect-azure {
         
     }
 }
-
 # Ensure required modules are installed
 function Install-RequiredModules {
     param (
@@ -145,7 +140,6 @@ function Get-workingcontext {
             HelpMessage = "Enter one or many Subscriptions names or patterns to be separated by commas ','")]
         [Array] $Subscriptionpattern
     )
-
     $Script:subscriptions = @()
     #  - Processing based on Supplied subscription Ids
     if ($subscriptionIds -ne '@all' -and -not ([string]::IsNullOrEmpty($subscriptionIds))) {
@@ -169,8 +163,7 @@ function Get-workingcontext {
                 $mg = Get-AzManagementGroup -GroupName $_.trim() -Expand -Recurse -warningAction silentlyContinue
                 $queue.Enqueue($mg)
             }
-        }  
-            
+        }    
         while ($queue.Count -ne 0) {
             $node = $queue.Dequeue()
             if ($node.Type -eq '/subscriptions') {
@@ -203,13 +196,11 @@ function Get-workingcontext {
             write-host "Found the following subscriptions"
             return $Script:subscriptions.'Subscription.Name' | Format-Table -AutoSize
         }
-        
     }
     else {
         Write-output "No Subscription pattern provided, returning all subscriptions `n " 
         return $Script:subscriptions.'Subscription.Name' | Format-Table -AutoSize
     }
-    
 }
 # Function to get available IPs in a Virtual Network
 function Get-AvailableIPsInVNet {
@@ -273,7 +264,6 @@ function Get-AvailableIPsInVNet {
                         [Array]::Reverse($nextIpBytes) # Reverse back to big-endian format
                         $NextIp = [System.Net.IPAddress]::new($nextIpBytes)
                         $AllIps += $NextIp # Generate all IPs in the subnet
-                
                     }
                     # detect special subnets
                     if (($subnet.Name -eq "GatewaySubnet")`
@@ -293,7 +283,7 @@ function Get-AvailableIPsInVNet {
                         $UsedIpsCount = $AllUsedIps.Count
                         $AvailableIpsCount = $AvailableIps.Count
                     }
-                
+             
                     # apply IP address transformation
                 }
                 Else {
@@ -338,7 +328,20 @@ function Get-AvailableIPsInVNet {
 } 
 function Initialize-FileName {
     $Today = Get-Date
-    $script:FileName = "AvailableIPsInVNET_$($Today.ToString("ddMMyyyy_HHmmss"))"
+    $FileName = "AvailableIPsInVNET_$($Today.ToString("ddMMyyyy_HHmmss"))"
+    if ( -not $OutputFolder) {
+        $OutputFolder = $PSScriptRoot
+        write-host "No output folder provided. Using script root folder: $OutputFolder" -ForegroundColor Yellow
+    }
+    Else {
+        write-host "Using provided output folder: $OutputFolder" -ForegroundColor Green
+    }
+    if (-not (Test-Path -Path $OutputFolder)) {
+        Write-Host "Output folder $OutputFolder does not exist. Creating it now..." -ForegroundColor Yellow
+        New-Item -ItemType Directory -Path $OutputFolder | Out-Null
+    }
+    $script:FilePath = Join-Path -Path $OutputFolder -ChildPath $FileName
+    write-host "The following output config will be used: $script:FilePath" -ForegroundColor Green
 }
 
 # Main script execution
@@ -350,6 +353,8 @@ try {
     Connect-Azure 
     # Initialize File Name
     Initialize-FileName
+    # Displaying selecting parameters
+    
     # Set working context
     Get-workingcontext -ManagementGroupIds $MgGroupIds -subscriptionIds $subIds -Subscriptionpattern $Subpattern
     # Process each subscription
@@ -361,26 +366,26 @@ try {
     switch ($ExportCSV) {
         $true {
             Write-Host "Exporting report as CSV" -ForegroundColor Yellow 
-            $Script:results | Export-Csv -Path "$outputfolder\$($script:FileName).csv" -NoTypeInformation -Encoding UTF8
-            Write-Host "CSV report exported to $outputfolder\$($script:FileName).csv" -ForegroundColor Green
+            $Script:results | Export-Csv -Path "$script:FilePath.csv" -NoTypeInformation -Encoding UTF8
+            Write-Host "CSV report exported to $script:FilePath.csv" -ForegroundColor Green
         }
     }
     switch ($ExportJSON) {
         $true {
             Write-Host "Exporting report as JSON" -ForegroundColor Yellow 
-            $Script:results | ConvertTo-Json -Depth 10 | Out-File -FilePath "$outputfolder\$($script:FileName).json"
-            Write-Host "JSON report exported to $outputfolder\$($script:FileName).json" -ForegroundColor Green
+            $Script:results | ConvertTo-Json -Depth 10 | Out-File -FilePath "$script:FilePath.json"
+            Write-Host "JSON report exported to $script:FilePath.json" -ForegroundColor Green
         }
     }
     switch ($ExportHTML) {
         $true {
             Write-Host "Exporting report as HTML" -ForegroundColor Yellow 
-            New-HTML -Title "Available IPs in VNET Report" -FilePath "$outputfolder\$($script:FileName).html" {
+            New-HTML -Title "Available IPs in VNET Report" -FilePath "$script:FilePath.html" {
                 New-HTMLSection -HeaderText "Available IPs in VNET Report" {
                     New-HTMLTable -DataTable $Script:results
                 }
             }
-            Write-Host "HTML report exported to $outputfolder\$($script:FileName).html" -ForegroundColor Green
+            Write-Host "HTML report exported to $script:FilePath.html" -ForegroundColor Green
         }
     }
     # Always show results in table
