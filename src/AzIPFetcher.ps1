@@ -1,4 +1,12 @@
 <#
+# ================================================
+#  AzIPFetcher - Azure Virtual Network IP Fetcher
+#  Author: Charbel Hanna
+#  Version: 1.2.1
+#  Last Updated: (auto-generated)
+#  License: MIT License
+# ==========================================
+
 .SYNOPSIS
 This script retrieves the used and available IP addresses in a specified Azure Virtual Network and its subnets.
 .DESCRIPTION
@@ -13,8 +21,6 @@ This example retrieves available IPs from all subscriptions under the specified 
  and exports the results to a CSV file.
 .NOTES
 This script requires the Azure PowerShell module to be installed and the user to be authenticated to Azure.
-AUTHOR:Charbel Hanna
-Version 1.1
 CHANGELOG{
 - Version 1.0 - Initial version
 - Version 1.1 [
@@ -30,7 +36,12 @@ CHANGELOG{
 - Version 1.2 [
  * Added login check to ensure user is logged in to Azure before proceeding with the script execution.
  * Added login method for different platforms (Device authentication for Unix-based systems).
- * Added support for selecting export file destination folder.      ]
+ * Added support for selecting export file destination folder.
+ ]
+- Version 1.2.1 [
+ * Added Banner Display 
+ * renamed script to AzIPFetcher.ps1
+  ]
  }
 #>
 [CmdletBinding()]
@@ -54,7 +65,7 @@ param (
     [Parameter(Mandatory = $false)]
     [switch]$ExportHTML
 )
-
+ 
 # Check if user is logged in to Azure
 function Connect-azure {
     try {
@@ -77,7 +88,7 @@ function Connect-azure {
             Connect-AzAccount
         }
         
-    }
+   bn  }
 }
 # Ensure required modules are installed
 function Install-RequiredModules {
@@ -113,6 +124,62 @@ function Install-RequiredModules {
 [array]$subscriptionIds = @()
 [array]$Subscriptionpattern = @()
 [array]$Script:results = @()
+
+# -------------------------------
+# Banner Configuration
+# -------------------------------
+$ScriptVersion = "1.2.1"
+$ScriptPath   = $MyInvocation.MyCommand.Definition
+$LastUpdated  = (Get-Item $ScriptPath).LastWriteTime.ToString("yyyy-MM-dd")
+$Author        = "Charbel Hanna"
+$GitHubRepo    = "https://github.com/charbelhanna/AzIPFetcher"
+$License       = "MIT License"
+
+# Function to Print Banner
+function Print-Banner {
+   param (
+    [string]$scriptVersion ,
+    [string]$LastUpdated , 
+    [string]$Author ,
+    [string]$GitHubRepo   
+   ) 
+# -------------------------------
+# ANSI Colors (RGB)
+# -------------------------------
+$Blue    = "`e[38;2;0;120;215m"   # Azure Blue
+$White   = "`e[38;2;255;255;255m" # White
+$Cyan    = "`e[38;2;0;200;255m"   # Accent Cyan
+$Gray    = "`e[38;2;180;180;180m" # Divider Gray
+$Reset   = "`e[0m"
+
+# -------------------------------
+# ASCII Banner - AzIPFetcher
+# -------------------------------
+Write-Host ""
+Write-Host ("{0}     _     ________ ____  _____    _       _               {1}" -f $Blue, $Reset)
+Write-Host ("{0}    / \   |__  /_ _|  _ \|  ___|__| |_ ___| |__   ___ _ __ {1}" -f $Blue, $Reset)
+Write-Host ("{0}   / _ \    / / | || |_) | |_ / _ \ __/ __| '_ \ / _ \ '__|{1}" -f $Blue, $Reset)
+Write-Host ("{0}  / ___ \  / /_ | ||  __/|  _|  __/ || (__| | | |  __/ |   {1}" -f $Blue, $Reset)
+Write-Host ("{0} /_/   \_\/____|___|_|   |_|  \___|\__\___|_| |_|\___|_|   {1}" -f $Blue, $Reset)
+Write-Host ("{0}                                                            {1}" -f $Blue, $Reset)
+Write-Host ("{0}                          🌐  AzIPFetcher{1}" -f $White, $Reset)
+Write-Host ("{0}         ☁️  Azure IP discovery made simple — fast, flexible, and export-ready{1}" -f $Cyan, $Reset)
+Write-Host ""
+
+# -------------------------------
+# Dynamic Info Line
+# -------------------------------
+Write-Host ("{0}Version:{1} {2}   {0}Last Updated:{1} {3}" -f $Cyan, $Reset, $ScriptVersion, $LastUpdated)
+Write-Host ("{0}Author:{1}  {2}" -f $Cyan, $Reset, $Author)
+Write-Host ("{0}GitHub:{1}  {2}" -f $Cyan, $Reset, $GitHubRepo)
+Write-Host ("{0}License:{1} {2}" -f $Cyan, $Reset, $License)
+Write-Host ""
+Write-Host ("{0}---------------------------------------------------------------{1}" -f $Gray, $Reset)
+Write-Host ""
+Start-Sleep -Milliseconds 300
+}
+
+
 # Function to Get Subscriptions Variables
 function Get-SubscriptionVariables {
     param(
@@ -346,7 +413,8 @@ function Initialize-FileName {
 
 # Main script execution
 try {
-    write-host "Starting the script to get Available IPs in VNET(s)" -ForegroundColor Green 
+    # Print Banner
+    Print-Banner -ScriptVersion $ScriptVersion -LastUpdated $LastUpdated -Author $Author -GitHubRepo $GitHubRepo
     #verfy and install required modules
     Install-RequiredModules 
     # Check Azure Login
@@ -354,7 +422,6 @@ try {
     # Initialize File Name
     Initialize-FileName
     # Displaying selecting parameters
-    
     # Set working context
     Get-workingcontext -ManagementGroupIds $MgGroupIds -subscriptionIds $subIds -Subscriptionpattern $Subpattern
     # Process each subscription

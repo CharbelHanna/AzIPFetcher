@@ -1,4 +1,21 @@
-# Get-AvailableIPsInVNET.ps1
+<!-- Banner -->
+<pre align="center">
+<code>
+<pre align="center">
+<code>
+     _     ________ ____  _____    _       _               
+    / \   |__  /_ _|  _ \|  ___|__| |_ ___| |__   ___ _ __ 
+   / _ \    / / | || |_) | |_ / _ \ __/ __| '_ \ / _ \ '__|
+  / ___ \  / /_ | ||  __/|  _|  __/ || (__| | | |  __/ |   
+ /_/   \_\/____|___|_|   |_|  \___|\__\___|_| |_|\___|_|   
+                                                           
+                                                                    
+     > AZIPFetcher — Azure IP discovery made simple — fast, flexible, and export-ready 
+</code>
+</pre>
+
+</code>
+</pre>
 
 ## Overview
 
@@ -38,19 +55,19 @@ This PowerShell script retrieves the used and available IP addresses in specifie
 ### Example 1: Retrieve available IPs from virtual networks under specific management groups
 
 ```powershell
-Get-AvailableIPsInVNet -MgGroupIds 'MymgGroupID1,MyMGroupID2' -Subpattern 'prod*,test*' -ExportCSV -OutputFolder "C:\Reports"
+AzIPFetcher.ps1 -MgGroupIds 'MymgGroupID1,MyMGroupID2' -Subpattern 'prod*,test*' -ExportCSV -OutputFolder "C:\Reports"
 ```
 
 ### Example 2: Retrieve available IPs from virtual networks in all subscriptions
 
 ```powershell
-Get-AvailableIPsInVNet -subIds '@all' -ExportJSON 
+AzIPFetcher.ps1 -subIds '@all' -ExportJSON 
 ```
 
 ### Example 3: Retrieve available IPs from virtual networks inside a specific subscriptions
 
 ```powershell
-Get-AvailableIPsInVNet -subIds 'subscriptionId1,subscriptionId2' -ExportHTML -OutputFolder "D:\Exports"
+AzIPFetcher.ps1 -subIds 'subscriptionId1,subscriptionId2' -ExportHTML -OutputFolder "D:\Exports"
 ```
 
 The script outputs the following details for each Virtual Network and its subnets
@@ -76,6 +93,10 @@ The script outputs the following details for each Virtual Network and its subnet
 - **HTML**: `<OutputFolder>\AvailableIPsInVNET_<timestamp>.html`
 
 ## Change Log
+
+### Version 1.2.1
+- Added a banner display with script details and metadata.
+- Renamed the script to `AzIPFetcher.ps1`.
 
 ### Version 1.2
 
