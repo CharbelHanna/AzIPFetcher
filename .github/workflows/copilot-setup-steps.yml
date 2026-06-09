@@ -1,0 +1,54 @@
+name: "Copilot Setup Steps"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  copilot-setup-steps:
+    # Use Windows runner for native PowerShell support (script is PowerShell-based, not cross-platform abstracted)
+    runs-on: windows-latest
+
+    permissions:
+      contents: read
+
+    # Module installation can take 3-4 minutes
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Azure PowerShell modules
+        run: |
+          $ErrorActionPreference = "Continue"
+          
+          Write-Host "Installing required Azure PowerShell modules..." -ForegroundColor Green
+          
+          # Define modules to install
+          $modules = @('Az.Accounts', 'Az.Network', 'Az.Resources', 'PSWriteHTML')
+          
+          foreach ($module in $modules) {
+            try {
+              Write-Host "Installing $module..." -ForegroundColor Yellow
+              Install-Module -Name $module -Force -Scope CurrentUser -AllowClobber -ErrorAction Stop
+              Write-Host "$module installed successfully" -ForegroundColor Green
+            }
+            catch {
+              # Don't fail the job if module installation fails - Copilot can install on-demand
+              Write-Host "Warning: Failed to install $module - script will attempt auto-install at runtime" -ForegroundColor Yellow
+            }
+          }
+          
+          Write-Host "`nSetup complete: Windows PowerShell environment ready for Azure operations" -ForegroundColor Green
+          Write-Host "Copilot can now work with IPFetcher without module download delays" -ForegroundColor Cyan
+
+      - name: Verify PowerShell version
+        run: |
+          Write-Host "PowerShell Version: $($PSVersionTable.PSVersion)" -ForegroundColor Cyan
+          Write-Host "PowerShell Edition: $($PSVersionTable.PSEdition)" -ForegroundColor Cyan
