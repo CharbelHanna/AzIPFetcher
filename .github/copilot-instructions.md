@@ -41,7 +41,7 @@ Users need **Reader-level access** or equivalent to:
 
 ## Architecture
 
-### Main Script: `Get-AvailableIpsInVNET.ps1`
+### Main Script: `AzIPFetcher.ps1`
 
 The script is organized around these core functions:
 
@@ -51,12 +51,12 @@ The script is organized around these core functions:
    - `Initialize-FileName`: Sets up output file paths with timestamp-based naming
 
 2. **Subscription Processing**
-   - `Get-workingcontext`: Resolves subscription scope (by ID, management group, or name pattern)
+   - `Get-WorkingContext`: Resolves subscription scope (by ID, management group, or name pattern)
    - `Get-SubscriptionVariables`: Creates subscription metadata objects
    - Uses a Queue-based BFS algorithm to traverse nested management groups recursively
 
 3. **IP Analysis**
-   - `Get-AvailableIPsInVNet`: Core function that processes each subnet:
+   - `AzIPFetcher`: Core function that processes each subnet:
      - Converts CIDR notation to IP ranges using bitwise operations
      - Retrieves in-use IPs from network interfaces
      - Calculates available IPs by comparing all vs. used
