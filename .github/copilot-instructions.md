@@ -100,6 +100,7 @@ The script is organized around these core functions:
   - Red: Errors
   - Cyan: Section headers
 - Colorized output for IP query results (IN USE = Red, available = Green)
+- **Query mode is quiet**: when `-QueryIP` or `-QueryIPInteractive` is set, `$Script:QueryMode` is `$true` and the per-subscription / per-VNET scan progress plus the final console table are suppressed, so the query result is the only substantive output. Any new chatty `Write-Host` in the scan path must be gated on `if (-not $Script:QueryMode)`.
 
 ### Parameter Design
 - All main parameters are optional (Mandatory = $false)
@@ -208,7 +209,8 @@ To add a new export format (e.g., XML):
 - **Results object structure**: Each result includes string representations (for display/export) and array representations (`AllIPsArray`, `UsedIPsArray`, `AvailableIPsArray`) used only by the query feature. The `*Array` properties are stripped via `$ReportResults` before CSV/JSON/HTML export and console output, so they don't render as `System.Object[]`.
 - **Execution order matters**: `Print-Banner` → `Install-RequiredModules` → `Connect-Azure` → `Initialize-FileName` → `Get-workingcontext` → `Get-AvailableIPsInVNet` per subscription → query mode → exports.
 - **Conditional module install**: `PSWriteHTML` is installed only when `-ExportHTML` is passed. A feature depending on it must update that conditional in `Install-RequiredModules`.
-- **`$script:FilePath` has no extension**: `Initialize-FileName` sets the base path; each exporter appends `.csv` / `.json` / `.html`.
+- **`$script:FilePath` has no extension**: `Initialize-FileName` sets the base path (`AzIPFetcher_<ddMMyyyy_HHmmss>`); each exporter appends `.csv` / `.json` / `.html`. Query exports append `_Query` (or `_<ip>_Query` in interactive mode).
+- **Azure collection properties are not strings**: `$subnet.AddressPrefix` and `$vnet.AddressSpace.AddressPrefixes` are `List[string]`. Always `-join` them before storing on a result object — string interpolation hides the problem in the console, but PSWriteHTML calls `.ToString()` and renders `System.Collections.Generic.List\`1[System.String]`.
 - **Version lives in three places** that must stay in sync: the comment header, `$ScriptVersion`, and the README change log.
 - **Azure module state**: Script auto-installs modules but doesn't uninstall—this is intentional for idempotency.
 - **Reserved IPs**: The first 3 addresses in a subnet are excluded from the available list via a `[3..count]` slice on the `Compare-Object` result.

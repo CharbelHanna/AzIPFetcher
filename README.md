@@ -129,19 +129,26 @@ When using `-QueryIP` or `-QueryIPInteractive`, the script returns:
 
 ### Full IP report
 
-- **CSV**: `<OutputFolder>\AvailableIPsInVNET_<timestamp>.csv`
-- **JSON**: `<OutputFolder>\AvailableIPsInVNET_<timestamp>.json`
-- **HTML**: `<OutputFolder>\AvailableIPsInVNET_<timestamp>.html`
+- **CSV**: `<OutputFolder>\AzIPFetcher_<timestamp>.csv`
+- **JSON**: `<OutputFolder>\AzIPFetcher_<timestamp>.json`
+- **HTML**: `<OutputFolder>\AzIPFetcher_<timestamp>.html`
 
 ### Query results
 
-- **CSV**: `<OutputFolder>\AvailableIPsInVNET_<timestamp>_Query.csv`
-- **JSON**: `<OutputFolder>\AvailableIPsInVNET_<timestamp>_Query.json`
-- **HTML**: `<OutputFolder>\AvailableIPsInVNET_<timestamp>_Query.html`
+- **CSV**: `<OutputFolder>\AzIPFetcher_<timestamp>_Query.csv`
+- **JSON**: `<OutputFolder>\AzIPFetcher_<timestamp>_Query.json`
+- **HTML**: `<OutputFolder>\AzIPFetcher_<timestamp>_Query.html`
 
 In interactive mode, each query writes its own file with the queried address in the name (for example `_10_0_1_5_Query.csv`).
 
 ## Change Log
+
+### Version 1.3.1
+
+- Renamed exported report files from `AvailableIPsInVNET_` to `AzIPFetcher_`.
+- Query mode (`-QueryIP` / `-QueryIPInteractive`) no longer prints the full IP table to the console; only the query result is shown.
+- Fixed subnet address space rendering as a .NET type name in HTML exports.
+- Subnets with multiple address prefixes are now matched correctly during queries.
 
 ### Version 1.3.0
 

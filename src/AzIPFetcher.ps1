@@ -2,7 +2,7 @@
 # ================================================
 #  AzIPFetcher - Azure Virtual Network IP Fetcher
 #  Author: Charbel Hanna
-#  Version: 1.3.0
+#  Version: 1.3.1
 #  Last Updated: (auto-generated)
 #  License: MIT License
 # ==========================================
@@ -36,14 +36,14 @@ Export query results to a JSON file.
 .PARAMETER QueryExportHTML
 Export query results to an HTML file.
 .EXAMPLE
-Get-AvailableIPsInVNet -MgGroupIDs 'MymgGroupID1,MyMGroupID2'  -Subpattern 'prod*,test*' -ExportCSV
+.\AzIPFetcher.ps1 -MgGroupIDs 'MymgGroupID1,MyMGroupID2'  -Subpattern 'prod*,test*' -ExportCSV
 This example retrieves available IPs from all subscriptions under the specified management groups, filtering subscriptions based on provided patterns,
  and exports the results to a CSV file.
 .EXAMPLE
-Get-AvailableIPsInVNet -subIds 'subscriptionId1,subscriptionId2' -QueryIP "10.0.1.5" -QueryExportHTML -OutputFolder "D:\Exports"
+.\AzIPFetcher.ps1 -subIds 'subscriptionId1,subscriptionId2' -QueryIP "10.0.1.5" -QueryExportHTML -OutputFolder "D:\Exports"
 This example retrieves all IPs from the specified subscriptions, queries for a specific IP address (10.0.1.5), and exports the query result to HTML.
 .EXAMPLE
-Get-AvailableIPsInVNet -MgGroupIds 'MyMgID' -QueryIPInteractive
+.\AzIPFetcher.ps1 -MgGroupIds 'MyMgID' -QueryIPInteractive
 This example retrieves all IPs from subscriptions in a management group and enables interactive query mode where users can search for multiple IP addresses interactively.
 .NOTES
 This script requires the Azure PowerShell module to be installed and the user to be authenticated to Azure.
@@ -76,6 +76,12 @@ CHANGELOG{
  * Query results include IP status (IN USE, AVAILABLE, RESERVED), location (subscription, VNET, subnet), and resource details
  * Restored subscription and resource group information in the results object
  * Fixed stray token in the Connect-azure fallback path
+  ]
+- Version 1.3.1 [
+ * Renamed exported report files from AvailableIPsInVNET_ to AzIPFetcher_
+ * Query mode now suppresses the full console IP table and prints only the query result
+ * Fixed subnet address space rendering as a .NET type name in HTML exports
+ * Fixed IP matching for subnets that have multiple address prefixes
   ]
  }
 #>
@@ -178,7 +184,7 @@ function Install-RequiredModules {
 # -------------------------------
 # Banner Configuration
 # -------------------------------
-$ScriptVersion = "1.3.0"
+$ScriptVersion = "1.3.1"
 $ScriptPath   = $MyInvocation.MyCommand.Definition
 $LastUpdated  = (Get-Item $ScriptPath).LastWriteTime.ToString("yyyy-MM-dd")
 $Author        = "Charbel Hanna"
@@ -330,17 +336,23 @@ function Get-AvailableIPsInVNet {
     $vnet = Get-AzVirtualNetwork  # Get all Virtual Networks in the subscription
     $subName = (Get-AzSubscription -SubscriptionId $subscriptionId).Name # Get the subscription name
     if (-not $vnet) {
-        Write-host "no Virtual Network  found in $subName."
+        if (-not $Script:QueryMode) {
+            Write-host "no Virtual Network  found in $subName."
+        }
     }
     else {
-        Write-host "Found $($vnet.count) Virtual Network(s) in $subName."
+        if (-not $Script:QueryMode) {
+            Write-host "Found $($vnet.count) Virtual Network(s) in $subName."
+        }
         $results = @()
         $vnet | foreach-object {
             # run through each Virtual Network
             $vnet = $_ # Assign the current Virtual Network to a variable
             $vnetname = $_.Name
             $vnetrgname = $_.ResourceGroupName
-            Write-Host "Processing Virtual Network: $vnetname in Resource Group: $vnetrgname" -Separator '|'
+            if (-not $Script:QueryMode) {
+                Write-Host "Processing Virtual Network: $vnetname in Resource Group: $vnetrgname" -Separator '|'
+            }
             # run through each subnet in the Virtual Network
             $vnet.Subnets | ForEach-object { 
                 # Fecth each subnet in the Virtual Network
@@ -429,7 +441,7 @@ function Get-AvailableIPsInVNet {
                     "VNetName"           = $vnet.Name
                     "VNetAddressSpace"   = ($vnet.AddressSpace.AddressPrefixes -join "`r`n")
                     "SubnetName"         = $subnet.Name
-                    "SubnetAddressSpace" = ($subnet.AddressPrefix)
+                    "SubnetAddressSpace" = ($subnet.AddressPrefix -join "`r`n")
                     "UsedIPsCount"       = $UsedIpsCount
                     "UsedIPs"            = ($AllUsedIPs -join "`r`n")
                     "AvailableIPsCount"  = $AvailableIpsCount
@@ -448,7 +460,7 @@ function Get-AvailableIPsInVNet {
 } 
 function Initialize-FileName {
     $Today = Get-Date
-    $FileName = "AvailableIPsInVNET_$($Today.ToString("ddMMyyyy_HHmmss"))"
+    $FileName = "AzIPFetcher_$($Today.ToString("ddMMyyyy_HHmmss"))"
     if ( -not $OutputFolder) {
         $OutputFolder = $PSScriptRoot
         write-host "No output folder provided. Using script root folder: $OutputFolder" -ForegroundColor Yellow
@@ -501,15 +513,27 @@ function Test-IPInSubnet {
         $prefixLength = [Convert]::ToInt32($SubnetCIDR.Split('/')[1])
         $subnetIP = [System.Net.IPAddress]::Parse($subnet)
 
+        # Comparing across address families is meaningless (e.g. IPv4 IP vs IPv6 prefix)
+        if ($subnetIP.AddressFamily -ne $IP.AddressFamily) {
+            return $false
+        }
+
         $subnetBytes = $subnetIP.GetAddressBytes()
         $ipBytes = $IP.GetAddressBytes()
 
-        $maskValue = if ($prefixLength -eq 0) { 0 } else { ([uint32]::MaxValue -shl (32 - $prefixLength)) -band 0xffffffff }
-        $maskBytes = [BitConverter]::GetBytes([uint32]$maskValue)
-        [Array]::Reverse($maskBytes) # Convert to big-endian to match GetAddressBytes order
+        for ($i = 0; $i -lt $subnetBytes.Length; $i++) {
+            $bitsLeft = $prefixLength - ($i * 8)
+            if ($bitsLeft -ge 8) {
+                $maskByte = 0xFF
+            }
+            elseif ($bitsLeft -le 0) {
+                break # remaining bytes are host bits
+            }
+            else {
+                $maskByte = (0xFF -shl (8 - $bitsLeft)) -band 0xFF
+            }
 
-        for ($i = 0; $i -lt 4; $i++) {
-            if (($subnetBytes[$i] -band $maskBytes[$i]) -ne ($ipBytes[$i] -band $maskBytes[$i])) {
+            if (($subnetBytes[$i] -band $maskByte) -ne ($ipBytes[$i] -band $maskByte)) {
                 return $false
             }
         }
@@ -538,9 +562,11 @@ function Find-IPAddressInResults {
     $foundResults = @()
 
     foreach ($result in $Results) {
-        $subnetCIDR = $result.SubnetAddressSpace
+        # A subnet can carry several prefixes (e.g. dual-stack); test each one
+        $subnetCIDRs = @("$($result.SubnetAddressSpace)" -split "`r?`n" | Where-Object { $_.Trim() })
+        $matchedCIDR = $subnetCIDRs | Where-Object { Test-IPInSubnet -IP $queryIP -SubnetCIDR $_.Trim() } | Select-Object -First 1
 
-        if (Test-IPInSubnet -IP $queryIP -SubnetCIDR $subnetCIDR) {
+        if ($matchedCIDR) {
             # Compare as strings; IPAddress instances do not compare by value with -contains
             $usedIPs = @($result.UsedIPsArray | ForEach-Object { $_.ToString() })
             $availableIPs = @($result.AvailableIPsArray | ForEach-Object { $_.ToString() })
@@ -564,7 +590,7 @@ function Find-IPAddressInResults {
                 VNetName           = $result.VNetName
                 VNetAddressSpace   = $result.VNetAddressSpace
                 SubnetName         = $result.SubnetName
-                SubnetAddressSpace = $result.SubnetAddressSpace
+                SubnetAddressSpace = $matchedCIDR.Trim()
             }
         }
     }
@@ -651,6 +677,8 @@ function Export-QueryResults {
 
 # Main script execution
 try {
+    # Query mode suppresses scan chatter so the query result is the only output
+    $Script:QueryMode = [bool]($QueryIP -or $QueryIPInteractive)
     # Print Banner
     Print-Banner -ScriptVersion $ScriptVersion -LastUpdated $LastUpdated -Author $Author -GitHubRepo $GitHubRepo
     #verfy and install required modules
@@ -663,8 +691,13 @@ try {
     # Set working context
     Get-workingcontext -ManagementGroupIds $MgGroupIds -subscriptionIds $subIds -Subscriptionpattern $Subpattern
     # Process each subscription
+    if ($Script:QueryMode) {
+        Write-Host "`nScanning $($Script:subscriptions.Count) subscription(s) for IP data, please wait..." -ForegroundColor Yellow
+    }
     $Script:subscriptions | ForEach-Object {
-        write-host `n'Processing Subscription' $_.'Subscription.Name' 'with Id' $_.'Subscription.Id'
+        if (-not $Script:QueryMode) {
+            write-host `n'Processing Subscription' $_.'Subscription.Name' 'with Id' $_.'Subscription.Id'
+        }
         Get-AvailableIPsInVNet -subscriptionId $_.'Subscription.Id' | Format-Table -AutoSize #formatting the output as a table
     }
     # Handle query mode
@@ -731,7 +764,7 @@ try {
     switch ($ExportHTML) {
         $true {
             Write-Host "Exporting report as HTML" -ForegroundColor Yellow 
-            New-HTML -Title "Available IPs in VNET Report" -FilePath "$script:FilePath.html" {
+            New-HTML -Title "AzIPFetcher Report" -FilePath "$script:FilePath.html" {
                 New-HTMLSection -HeaderText "Available IPs in VNET Report" {
                     New-HTMLTable -DataTable $ReportResults
                 }
@@ -739,10 +772,11 @@ try {
             Write-Host "HTML report exported to $script:FilePath.html" -ForegroundColor Green
         }
     }
-    # Always show results in table
-    Write-Host "`n Printing to Console Final Results:" -ForegroundColor Cyan
-    $ReportResults | Sort-Object SubnetName | Format-table -wrap -AutoSize
-
+    # In query mode the console shows the query result only; the full table would bury it
+    if (-not $Script:QueryMode) {
+        Write-Host "`n Printing to Console Final Results:" -ForegroundColor Cyan
+        $ReportResults | Sort-Object SubnetName | Format-table -wrap -AutoSize
+    }
 }
 catch {
     Write-Error "An error occurred: $_"
