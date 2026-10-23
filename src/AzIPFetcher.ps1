@@ -2,23 +2,49 @@
 # ================================================
 #  AzIPFetcher - Azure Virtual Network IP Fetcher
 #  Author: Charbel Hanna
-#  Version: 1.2.1
+#  Version: 1.3.0
 #  Last Updated: (auto-generated)
 #  License: MIT License
 # ==========================================
 
 .SYNOPSIS
-This script retrieves the used and available IP addresses in a specified Azure Virtual Network and its subnets.
+This script retrieves the used and available IP addresses in a specified Azure Virtual Network and its subnets, with the capability to query specific IP addresses.
 .DESCRIPTION
-This PowerShell script connects to Azure, retrieves the specified Virtual Network and its subnets, and calculates the used and available IP addresses within those subnets. It outputs the results in a structured format.  
-.PARAMETER vnetname
-The name of the Virtual Network to query.
-.PARAMETER vnetrgname
-The name of the Resource Group containing the Virtual Network.  
+This PowerShell script connects to Azure, retrieves the specified Virtual Network and its subnets, and calculates the used and available IP addresses within those subnets. It outputs the results in a structured format and supports querying individual IP addresses to determine their availability and location.
+.PARAMETER MgGroupIds
+One or more Management Group IDs separated by commas.
+.PARAMETER subIds
+One or more Subscription IDs separated by commas. Use '@all' to get all subscriptions.
+.PARAMETER Subpattern
+One or more Subscription names or patterns separated by commas.
+.PARAMETER OutputFolder
+The folder where the exported files will be saved. Defaults to the script root folder.
+.PARAMETER ExportCSV
+Export the results to a CSV file.
+.PARAMETER ExportJSON
+Export the results to a JSON file.
+.PARAMETER ExportHTML
+Export the results to an HTML file.
+.PARAMETER QueryIP
+IP address to query for availability and location information.
+.PARAMETER QueryIPInteractive
+Enable interactive query mode for multiple IP lookups. After initial data collection, the user is prompted to enter IP addresses to search for.
+.PARAMETER QueryExportCSV
+Export query results to a CSV file.
+.PARAMETER QueryExportJSON
+Export query results to a JSON file.
+.PARAMETER QueryExportHTML
+Export query results to an HTML file.
 .EXAMPLE
 Get-AvailableIPsInVNet -MgGroupIDs 'MymgGroupID1,MyMGroupID2'  -Subpattern 'prod*,test*' -ExportCSV
 This example retrieves available IPs from all subscriptions under the specified management groups, filtering subscriptions based on provided patterns,
  and exports the results to a CSV file.
+.EXAMPLE
+Get-AvailableIPsInVNet -subIds 'subscriptionId1,subscriptionId2' -QueryIP "10.0.1.5" -QueryExportHTML -OutputFolder "D:\Exports"
+This example retrieves all IPs from the specified subscriptions, queries for a specific IP address (10.0.1.5), and exports the query result to HTML.
+.EXAMPLE
+Get-AvailableIPsInVNet -MgGroupIds 'MyMgID' -QueryIPInteractive
+This example retrieves all IPs from subscriptions in a management group and enables interactive query mode where users can search for multiple IP addresses interactively.
 .NOTES
 This script requires the Azure PowerShell module to be installed and the user to be authenticated to Azure.
 CHANGELOG{
@@ -42,6 +68,15 @@ CHANGELOG{
  * Added Banner Display 
  * renamed script to AzIPFetcher.ps1
   ]
+- Version 1.3.0 [
+ * Added IP query feature to search for specific IP addresses
+ * Added -QueryIP parameter for single IP lookup
+ * Added -QueryIPInteractive parameter for interactive query mode
+ * Added -QueryExportCSV, -QueryExportJSON, -QueryExportHTML parameters for query result exports
+ * Query results include IP status (IN USE, AVAILABLE, RESERVED), location (subscription, VNET, subnet), and resource details
+ * Restored subscription and resource group information in the results object
+ * Fixed stray token in the Connect-azure fallback path
+  ]
  }
 #>
 [CmdletBinding()]
@@ -63,7 +98,22 @@ param (
     [Parameter(Mandatory = $false)]
     [switch]$ExportJSON,
     [Parameter(Mandatory = $false)]
-    [switch]$ExportHTML
+    [switch]$ExportHTML,
+    [Parameter( Mandatory = $false,
+        HelpMessage = "IP address to query for availability and location")]
+    [string]$QueryIP,
+    [Parameter(Mandatory = $false,
+        HelpMessage = "Enable interactive query mode for multiple IP lookups")]
+    [switch]$QueryIPInteractive,
+    [Parameter(Mandatory = $false,
+        HelpMessage = "Export query results to CSV")]
+    [switch]$QueryExportCSV,
+    [Parameter(Mandatory = $false,
+        HelpMessage = "Export query results to JSON")]
+    [switch]$QueryExportJSON,
+    [Parameter(Mandatory = $false,
+        HelpMessage = "Export query results to HTML")]
+    [switch]$QueryExportHTML
 )
  
 # Check if user is logged in to Azure
@@ -88,7 +138,7 @@ function Connect-azure {
             Connect-AzAccount
         }
         
-   bn  }
+    }
 }
 # Ensure required modules are installed
 function Install-RequiredModules {
@@ -128,7 +178,7 @@ function Install-RequiredModules {
 # -------------------------------
 # Banner Configuration
 # -------------------------------
-$ScriptVersion = "1.2.1"
+$ScriptVersion = "1.3.0"
 $ScriptPath   = $MyInvocation.MyCommand.Definition
 $LastUpdated  = (Get-Item $ScriptPath).LastWriteTime.ToString("yyyy-MM-dd")
 $Author        = "Charbel Hanna"
@@ -373,17 +423,20 @@ function Get-AvailableIPsInVNet {
                 }
                 #write-host "AvailableIps are $AvailableIps"
                 $Script:results += [PSCustomObject]@{
-                    #"SubscriptionName"   = $subName
-                    #"SubscriptionId"     = $subscriptionId
-                    #"ResourceGroupName" = $vnetrgname
+                    "SubscriptionName"   = $subName
+                    "SubscriptionId"     = $subscriptionId
+                    "ResourceGroupName"  = $vnetrgname
                     "VNetName"           = $vnet.Name
                     "VNetAddressSpace"   = ($vnet.AddressSpace.AddressPrefixes -join "`r`n")
                     "SubnetName"         = $subnet.Name
-                    "SubnetAddressSpace" = ($subnet.AddressPrefix).split('{,}')
+                    "SubnetAddressSpace" = ($subnet.AddressPrefix)
                     "UsedIPsCount"       = $UsedIpsCount
                     "UsedIPs"            = ($AllUsedIPs -join "`r`n")
                     "AvailableIPsCount"  = $AvailableIpsCount
                     "AvailableIPs"       = ($AvailableIps -join "`r`n")
+                    "AllIPsArray"        = @($AllIps)
+                    "UsedIPsArray"       = @($AllUsedIPs)
+                    "AvailableIPsArray"  = @($AvailableIps)
                 }    
             }
             
@@ -411,6 +464,191 @@ function Initialize-FileName {
     write-host "The following output config will be used: $script:FilePath" -ForegroundColor Green
 }
 
+# Function to validate IP address format
+function Test-IPAddressFormat {
+    param([string]$IPAddress)
+
+    try {
+        [System.Net.IPAddress]::Parse($IPAddress) | Out-Null
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+# Function to convert IP string to IPAddress object
+function Convert-ToIPAddress {
+    param([string]$IPString)
+
+    try {
+        return [System.Net.IPAddress]::Parse($IPString)
+    }
+    catch {
+        return $null
+    }
+}
+
+# Function to check if IP is in subnet range
+function Test-IPInSubnet {
+    param(
+        [System.Net.IPAddress]$IP,
+        [string]$SubnetCIDR
+    )
+
+    try {
+        $subnet = $SubnetCIDR.Split('/')[0]
+        $prefixLength = [Convert]::ToInt32($SubnetCIDR.Split('/')[1])
+        $subnetIP = [System.Net.IPAddress]::Parse($subnet)
+
+        $subnetBytes = $subnetIP.GetAddressBytes()
+        $ipBytes = $IP.GetAddressBytes()
+
+        $maskValue = if ($prefixLength -eq 0) { 0 } else { ([uint32]::MaxValue -shl (32 - $prefixLength)) -band 0xffffffff }
+        $maskBytes = [BitConverter]::GetBytes([uint32]$maskValue)
+        [Array]::Reverse($maskBytes) # Convert to big-endian to match GetAddressBytes order
+
+        for ($i = 0; $i -lt 4; $i++) {
+            if (($subnetBytes[$i] -band $maskBytes[$i]) -ne ($ipBytes[$i] -band $maskBytes[$i])) {
+                return $false
+            }
+        }
+
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+# Function to find IP address in results
+function Find-IPAddressInResults {
+    param(
+        [string]$IPAddress,
+        [array]$Results
+    )
+
+    # Validate IP format
+    if (-not (Test-IPAddressFormat -IPAddress $IPAddress)) {
+        Write-Host "Invalid IP address format: $IPAddress" -ForegroundColor Red
+        return $null
+    }
+
+    $queryIP = Convert-ToIPAddress -IPString $IPAddress
+    $foundResults = @()
+
+    foreach ($result in $Results) {
+        $subnetCIDR = $result.SubnetAddressSpace
+
+        if (Test-IPInSubnet -IP $queryIP -SubnetCIDR $subnetCIDR) {
+            # Compare as strings; IPAddress instances do not compare by value with -contains
+            $usedIPs = @($result.UsedIPsArray | ForEach-Object { $_.ToString() })
+            $availableIPs = @($result.AvailableIPsArray | ForEach-Object { $_.ToString() })
+
+            if ($usedIPs -contains $queryIP.ToString()) {
+                $status = "IN USE"
+            }
+            elseif ($availableIPs -contains $queryIP.ToString()) {
+                $status = "AVAILABLE"
+            }
+            else {
+                $status = "RESERVED"
+            }
+
+            $foundResults += [PSCustomObject]@{
+                QueryIP            = $IPAddress
+                Status             = $status
+                SubscriptionName   = $result.SubscriptionName
+                SubscriptionId     = $result.SubscriptionId
+                ResourceGroupName  = $result.ResourceGroupName
+                VNetName           = $result.VNetName
+                VNetAddressSpace   = $result.VNetAddressSpace
+                SubnetName         = $result.SubnetName
+                SubnetAddressSpace = $result.SubnetAddressSpace
+            }
+        }
+    }
+
+    if ($foundResults.Count -eq 0) {
+        return $null
+    }
+
+    return $foundResults
+}
+
+# Function to display query results
+function Show-QueryResult {
+    param(
+        [array]$QueryResults,
+        [string]$QueryIP
+    )
+
+    if ($null -eq $QueryResults -or $QueryResults.Count -eq 0) {
+        Write-Host "`n[IP Query Result] - $QueryIP" -ForegroundColor Yellow
+        Write-Host "Status: NOT FOUND in queried scope" -ForegroundColor Red
+        Write-Host "`nThe IP address was not found in any of the scanned subscriptions/VNETs/Subnets." -ForegroundColor Yellow
+        return
+    }
+
+    foreach ($result in $QueryResults) {
+        Write-Host "`n=== IP Query Result ===" -ForegroundColor Green
+        Write-Host "Query IP Address:     $($result.QueryIP)" -ForegroundColor Cyan
+        Write-Host "Status:               $($result.Status)" -ForegroundColor $(if ($result.Status -eq "IN USE") { "Red" } else { "Green" })
+        Write-Host "Subscription:         $($result.SubscriptionName) ($($result.SubscriptionId))" -ForegroundColor White
+        Write-Host "Resource Group:       $($result.ResourceGroupName)" -ForegroundColor White
+        Write-Host "Virtual Network:      $($result.VNetName)" -ForegroundColor White
+        Write-Host "VNET Address Space:   $($result.VNetAddressSpace)" -ForegroundColor White
+        Write-Host "Subnet:               $($result.SubnetName)" -ForegroundColor White
+        Write-Host "Subnet Address Space: $($result.SubnetAddressSpace)" -ForegroundColor White
+        Write-Host "=====================`n" -ForegroundColor Green
+    }
+}
+
+# Function to export query results
+function Export-QueryResults {
+    param(
+        [array]$QueryResults,
+        [string]$FilePath,
+        [switch]$ToCSV,
+        [switch]$ToJSON,
+        [switch]$ToHTML
+    )
+
+    if ($null -eq $QueryResults -or $QueryResults.Count -eq 0) {
+        Write-Host "No query results to export." -ForegroundColor Yellow
+        return
+    }
+
+    $baseFilePath = "$FilePath`_Query"
+
+    if ($ToCSV) {
+        $csvPath = "$baseFilePath.csv"
+        $QueryResults | Export-Csv -Path $csvPath -NoTypeInformation -Encoding UTF8
+        Write-Host "Query result exported to CSV: $csvPath" -ForegroundColor Green
+    }
+
+    if ($ToJSON) {
+        $jsonPath = "$baseFilePath.json"
+        $QueryResults | ConvertTo-Json -Depth 10 | Out-File -FilePath $jsonPath -Encoding UTF8
+        Write-Host "Query result exported to JSON: $jsonPath" -ForegroundColor Green
+    }
+
+    if ($ToHTML) {
+        $htmlPath = "$baseFilePath.html"
+        try {
+            New-HTML -Title "IP Query Result Report" -FilePath $htmlPath {
+                New-HTMLSection -HeaderText "IP Query Result" {
+                    New-HTMLTable -DataTable $QueryResults -HideFooter
+                }
+            }
+            Write-Host "Query result exported to HTML: $htmlPath" -ForegroundColor Green
+        }
+        catch {
+            Write-Host "Error exporting to HTML: $($_). PSWriteHTML module may not be available." -ForegroundColor Yellow
+        }
+    }
+}
+
 # Main script execution
 try {
     # Print Banner
@@ -429,18 +667,64 @@ try {
         write-host `n'Processing Subscription' $_.'Subscription.Name' 'with Id' $_.'Subscription.Id'
         Get-AvailableIPsInVNet -subscriptionId $_.'Subscription.Id' | Format-Table -AutoSize #formatting the output as a table
     }
+    # Handle query mode
+    if ($QueryIP -or $QueryIPInteractive) {
+        Write-Host "`n[IP Query Mode Activated]" -ForegroundColor Cyan
+
+        if ($QueryIP) {
+            # Single query mode
+            Write-Host "Searching for IP: $QueryIP" -ForegroundColor Yellow
+            $queryResults = Find-IPAddressInResults -IPAddress $QueryIP -Results $Script:results
+            Show-QueryResult -QueryResults $queryResults -QueryIP $QueryIP
+
+            if ($QueryExportCSV -or $QueryExportJSON -or $QueryExportHTML) {
+                Export-QueryResults -QueryResults $queryResults -FilePath $script:FilePath -ToCSV:$QueryExportCSV -ToJSON:$QueryExportJSON -ToHTML:$QueryExportHTML
+            }
+        }
+
+        if ($QueryIPInteractive) {
+            # Interactive query mode
+            Write-Host "`nEntering interactive query mode. Type 'quit' to exit." -ForegroundColor Yellow
+
+            do {
+                $inputIP = Read-Host "`nEnter IP address to query (or 'quit' to exit)"
+
+                if ([string]::IsNullOrWhiteSpace($inputIP)) {
+                    continue
+                }
+                if ($inputIP.Trim().ToLower() -eq 'quit') {
+                    Write-Host "Exiting interactive query mode." -ForegroundColor Green
+                    break
+                }
+
+                $inputIP = $inputIP.Trim()
+                Write-Host "Searching for IP: $inputIP" -ForegroundColor Yellow
+                $queryResults = Find-IPAddressInResults -IPAddress $inputIP -Results $Script:results
+                Show-QueryResult -QueryResults $queryResults -QueryIP $inputIP
+
+                if ($QueryExportCSV -or $QueryExportJSON -or $QueryExportHTML) {
+                    $baseFileName = "$($script:FilePath)_$($inputIP.Replace('.', '_'))"
+                    Export-QueryResults -QueryResults $queryResults -FilePath $baseFileName -ToCSV:$QueryExportCSV -ToJSON:$QueryExportJSON -ToHTML:$QueryExportHTML
+                }
+            } while ($true)
+        }
+    }
+
     # Export options based on input switches
+    # The *Array properties back the IP query feature only; exclude them from reports
+    $ReportResults = $Script:results | Select-Object -ExcludeProperty AllIPsArray, UsedIPsArray, AvailableIPsArray -Property *
+
     switch ($ExportCSV) {
         $true {
             Write-Host "Exporting report as CSV" -ForegroundColor Yellow 
-            $Script:results | Export-Csv -Path "$script:FilePath.csv" -NoTypeInformation -Encoding UTF8
+            $ReportResults | Export-Csv -Path "$script:FilePath.csv" -NoTypeInformation -Encoding UTF8
             Write-Host "CSV report exported to $script:FilePath.csv" -ForegroundColor Green
         }
     }
     switch ($ExportJSON) {
         $true {
             Write-Host "Exporting report as JSON" -ForegroundColor Yellow 
-            $Script:results | ConvertTo-Json -Depth 10 | Out-File -FilePath "$script:FilePath.json"
+            $ReportResults | ConvertTo-Json -Depth 10 | Out-File -FilePath "$script:FilePath.json"
             Write-Host "JSON report exported to $script:FilePath.json" -ForegroundColor Green
         }
     }
@@ -449,7 +733,7 @@ try {
             Write-Host "Exporting report as HTML" -ForegroundColor Yellow 
             New-HTML -Title "Available IPs in VNET Report" -FilePath "$script:FilePath.html" {
                 New-HTMLSection -HeaderText "Available IPs in VNET Report" {
-                    New-HTMLTable -DataTable $Script:results
+                    New-HTMLTable -DataTable $ReportResults
                 }
             }
             Write-Host "HTML report exported to $script:FilePath.html" -ForegroundColor Green
@@ -457,7 +741,7 @@ try {
     }
     # Always show results in table
     Write-Host "`n Printing to Console Final Results:" -ForegroundColor Cyan
-    $Script:results | Sort-Object SubnetName | Format-table -wrap -AutoSize
+    $ReportResults | Sort-Object SubnetName | Format-table -wrap -AutoSize
 
 }
 catch {

@@ -1,8 +1,8 @@
-# Copilot Instructions for IPFetcher
+# Copilot Instructions for AzIPFetcher
 
 ## Overview
 
-IPFetcher is a PowerShell-based tool for auditing IP address usage in Azure Virtual Networks. It retrieves used and available IPs across multiple subscriptions, management groups, and supports querying specific IP addresses to determine their status and location.
+AzIPFetcher is a PowerShell-based tool for auditing IP address usage in Azure Virtual Networks. It retrieves used and available IPs across multiple subscriptions, management groups, and supports querying specific IP addresses to determine their status and location.
 
 ## Prerequisites & Dependencies
 
@@ -41,7 +41,7 @@ Users need **Reader-level access** or equivalent to:
 
 ## Architecture
 
-### Main Script: `AzIPFetcher.ps1`
+### Main Script: `src/AzIPFetcher.ps1`
 
 The script is organized around these core functions:
 
@@ -51,12 +51,12 @@ The script is organized around these core functions:
    - `Initialize-FileName`: Sets up output file paths with timestamp-based naming
 
 2. **Subscription Processing**
-   - `Get-WorkingContext`: Resolves subscription scope (by ID, management group, or name pattern)
+   - `Get-workingcontext`: Resolves subscription scope (by ID, management group, or name pattern)
    - `Get-SubscriptionVariables`: Creates subscription metadata objects
    - Uses a Queue-based BFS algorithm to traverse nested management groups recursively
 
 3. **IP Analysis**
-   - `AzIPFetcher`: Core function that processes each subnet:
+   - `Get-AvailableIPsInVNet`: Core function that processes each subnet:
      - Converts CIDR notation to IP ranges using bitwise operations
      - Retrieves in-use IPs from network interfaces
      - Calculates available IPs by comparing all vs. used
@@ -67,7 +67,7 @@ The script is organized around these core functions:
    - `Test-IPAddressFormat`: Validates IP format
    - `Test-IPInSubnet`: Checks if IP belongs to a subnet using subnet mask math
    - `Find-IPAddressInResults`: Queries results to determine IP status (IN USE/AVAILABLE/RESERVED)
-   - `Display-QueryResult`: Formats query results with color-coded output
+   - `Show-QueryResult`: Formats query results with color-coded output
    - `Export-QueryResults`: Exports query results to CSV/JSON/HTML
 
 5. **Export Functions**
@@ -111,26 +111,42 @@ The script is organized around these core functions:
 ### Running the Script
 ```powershell
 # Retrieve all IPs from specific subscriptions and export as CSV
-.\Get-AvailableIpsInVNET.ps1 -subIds 'sub1,sub2' -ExportCSV -OutputFolder "C:\Reports"
+.\src\AzIPFetcher.ps1 -subIds 'sub1,sub2' -ExportCSV -OutputFolder "C:\Reports"
 
 # Query specific IP across all subscriptions
-.\Get-AvailableIpsInVNET.ps1 -subIds '@all' -QueryIP "10.0.1.5" -QueryExportHTML
+.\src\AzIPFetcher.ps1 -subIds '@all' -QueryIP "10.0.1.5" -QueryExportHTML
 
 # Interactive query mode (search multiple IPs in one session)
-.\Get-AvailableIpsInVNET.ps1 -MgGroupIds 'MyMgID' -QueryIPInteractive
+.\src\AzIPFetcher.ps1 -MgGroupIds 'MyMgID' -QueryIPInteractive
 ```
+
+### Syntax checking
+
+There is no build, test suite, or linter config in this repo. The script cannot be smoke-tested without live Azure credentials, so a parse check is the main fast feedback loop after editing:
+
+```powershell
+$errors = $null
+[System.Management.Automation.Language.Parser]::ParseFile(
+    (Resolve-Path 'src\AzIPFetcher.ps1').Path, [ref]$null, [ref]$errors) | Out-Null
+if ($errors) { $errors | ForEach-Object { "$($_.Extent.StartLineNumber): $($_.Message)" } } else { "PARSE OK" }
+```
+
+Note that a parse check will not catch a bare word typo on its own line — PowerShell parses it as a command invocation that only fails at runtime.
+
+The pure IP-math helpers (`Test-IPAddressFormat`, `Convert-ToIPAddress`, `Test-IPInSubnet`, `Find-IPAddressInResults`) have no Azure dependency and can be tested directly by extracting them with the AST and passing a hand-built results object.
 
 ### Modifying IP Query Logic
 When adding new IP status checks, update:
-1. `Find-IPAddressInResults` function: Add new status conditions
-2. `Display-QueryResult` function: Add color coding if needed
-3. Result object properties (line 505-515): Include new fields
+1. `Find-IPAddressInResults`: Add new status conditions
+2. `Show-QueryResult`: Add color coding if needed
+3. The result object built in `Get-AvailableIPsInVNet`: Include new fields
 
 ### Adding Export Formats
 To add a new export format (e.g., XML):
-1. Add new parameter (e.g., `-ExportXML` switch)
-2. Create export function following the pattern of `Export-QueryResults`
-3. Add switch case in main script (around line 669-676)
+1. Add a new switch parameter (e.g., `-ExportXML`)
+2. Create an export function following the pattern of `Export-QueryResults`
+3. Add a switch case in the main execution block
+4. If the format needs an external module, add it to the conditional module list in `Install-RequiredModules`
 
 ## Testing Guidance
 
@@ -172,7 +188,7 @@ To add a new export format (e.g., XML):
 
 **"No subscriptions found" when using `-MgGroupIds`**
 - Verify management group ID is correct and user has access
-- Check for disabled subscriptions (script filters these automatically, line 249)
+- Check for disabled subscriptions (the script filters these out automatically)
 - Test with `-subIds '@all'` to verify Azure connectivity
 
 **Script hangs during Azure module installation**
@@ -187,8 +203,14 @@ To add a new export format (e.g., XML):
 
 ## Important Notes
 
-- **Script is not modularized**: All functions are in a single 676-line file. When making changes, verify the entire flow from parameter processing through export.
-- **Results object structure**: Each result includes both string representations (for display) and array representations (`*Array` properties) of IPs for query functionality.
+- **Script is not modularized**: All functions live in the single `src/AzIPFetcher.ps1` file. When making changes, verify the entire flow from parameter processing through export.
+- **State flows through script scope, not return values**: `$Script:results`, `$Script:subscriptions`, and `$script:FilePath` carry state between functions. `Get-AvailableIPsInVNet` ends with `return $Script:results >$null` — the redirect deliberately suppresses pipeline output, and both it and `Get-workingcontext` are called for their side effects. Do not refactor these into pure functions without updating every call site.
+- **Results object structure**: Each result includes string representations (for display/export) and array representations (`AllIPsArray`, `UsedIPsArray`, `AvailableIPsArray`) used only by the query feature. The `*Array` properties are stripped via `$ReportResults` before CSV/JSON/HTML export and console output, so they don't render as `System.Object[]`.
+- **Execution order matters**: `Print-Banner` → `Install-RequiredModules` → `Connect-Azure` → `Initialize-FileName` → `Get-workingcontext` → `Get-AvailableIPsInVNet` per subscription → query mode → exports.
+- **Conditional module install**: `PSWriteHTML` is installed only when `-ExportHTML` is passed. A feature depending on it must update that conditional in `Install-RequiredModules`.
+- **`$script:FilePath` has no extension**: `Initialize-FileName` sets the base path; each exporter appends `.csv` / `.json` / `.html`.
+- **Version lives in three places** that must stay in sync: the comment header, `$ScriptVersion`, and the README change log.
 - **Azure module state**: Script auto-installs modules but doesn't uninstall—this is intentional for idempotency.
-- **Reserved IPs**: First 3 and last IPs in subnet are always reserved by Azure (excluded from available count, line 351/372).
-- **Special subnets**: GatewaySubnet, AzureBastionSubnet, AzureFirewallSubnet, RouteServerSubnet, and AzureFirewallManagementSubnet return "N/A" for IP counts (line 343).
+- **Reserved IPs**: The first 3 addresses in a subnet are excluded from the available list via a `[3..count]` slice on the `Compare-Object` result.
+- **Special subnets**: GatewaySubnet, AzureBastionSubnet, AzureFirewallSubnet, RouteServerSubnet, and AzureFirewallManagementSubnet short-circuit to `"N/A"` for counts and `"Undefined"` for the available list — so count fields are mixed `int`/`string` by design. Anything consuming them must tolerate both.
+- **Banner requires ANSI support**: `Print-Banner` emits RGB escape sequences and expects a terminal that renders them.
