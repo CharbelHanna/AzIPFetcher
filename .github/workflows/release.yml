@@ -103,7 +103,28 @@ jobs:
             echo "Release '$TAG' already exists; nothing to do."
             exit 0
           fi
+
+          # GitHub's generated notes only list merged PRs, so changes pushed
+          # directly to main would be invisible. Prepend the matching README
+          # changelog section so the notes reflect the actual content.
+          VERSION="${TAG#v}"
+          CHANGELOG=$(awk -v ver="### Version $VERSION" '
+            $0 == ver { found = 1; next }
+            found && /^### Version / { exit }
+            found { print }
+          ' README.md)
+
+          GENERATED=$(gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f tag_name="$TAG" --jq '.body')
+
+          if [ -n "$(echo "$CHANGELOG" | tr -d '[:space:]')" ]; then
+            NOTES=$(printf '## Highlights\n%s\n\n%s\n' "$CHANGELOG" "$GENERATED")
+          else
+            echo "::warning::No '### Version $VERSION' section found in README.md; using generated notes only."
+            NOTES="$GENERATED"
+          fi
+
           gh release create "$TAG" \
             --title "AzIPFetcher $TAG" \
-            --generate-notes \
+            --notes "$NOTES" \
             --verify-tag
