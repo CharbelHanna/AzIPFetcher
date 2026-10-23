@@ -143,13 +143,6 @@ In interactive mode, each query writes its own file with the queried address in 
 
 ## Change Log
 
-### Version 1.3.1
-
-- Renamed exported report files from `AvailableIPsInVNET_` to `AzIPFetcher_`.
-- Query mode (`-QueryIP` / `-QueryIPInteractive`) no longer prints the full IP table to the console; only the query result is shown.
-- Fixed subnet address space rendering as a .NET type name in HTML exports.
-- Subnets with multiple address prefixes are now matched correctly during queries.
-
 ### Version 1.3.0
 
 - Added an IP query feature (`-QueryIP`) to search for a specific IP address.
@@ -157,6 +150,10 @@ In interactive mode, each query writes its own file with the queried address in 
 - Added query result exports (`-QueryExportCSV`, `-QueryExportJSON`, `-QueryExportHTML`).
 - Restored subscription and resource group details in the report output.
 - Fixed a stray token that caused a runtime error in the Azure login fallback path.
+- Renamed exported report files from `AvailableIPsInVNET_` to `AzIPFetcher_`.
+- Query mode (`-QueryIP` / `-QueryIPInteractive`) no longer prints the full IP table to the console; only the query result is shown.
+- Fixed subnet address space rendering as a .NET type name in HTML exports.
+- Subnets with multiple address prefixes are now matched correctly during queries.
 
 ### Version 1.2.1
 

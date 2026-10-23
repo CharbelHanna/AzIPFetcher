@@ -2,7 +2,7 @@
 # ================================================
 #  AzIPFetcher - Azure Virtual Network IP Fetcher
 #  Author: Charbel Hanna
-#  Version: 1.3.1
+#  Version: 1.3.0
 #  Last Updated: (auto-generated)
 #  License: MIT License
 # ==========================================
@@ -76,8 +76,6 @@ CHANGELOG{
  * Query results include IP status (IN USE, AVAILABLE, RESERVED), location (subscription, VNET, subnet), and resource details
  * Restored subscription and resource group information in the results object
  * Fixed stray token in the Connect-azure fallback path
-  ]
-- Version 1.3.1 [
  * Renamed exported report files from AvailableIPsInVNET_ to AzIPFetcher_
  * Query mode now suppresses the full console IP table and prints only the query result
  * Fixed subnet address space rendering as a .NET type name in HTML exports
@@ -184,7 +182,7 @@ function Install-RequiredModules {
 # -------------------------------
 # Banner Configuration
 # -------------------------------
-$ScriptVersion = "1.3.1"
+$ScriptVersion = "1.3.0"
 $ScriptPath   = $MyInvocation.MyCommand.Definition
 $LastUpdated  = (Get-Item $ScriptPath).LastWriteTime.ToString("yyyy-MM-dd")
 $Author        = "Charbel Hanna"

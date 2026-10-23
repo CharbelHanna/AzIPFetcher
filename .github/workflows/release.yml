@@ -1,0 +1,109 @@
+name: Release
+
+# Publishes a GitHub Release when a version tag is pushed.
+# Tag-triggered workflows are read from the tagged commit, so this file must
+# already exist in the commit being tagged.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to publish a release for (e.g. v1.3.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          # Full history so the tag can be verified as an ancestor of main.
+          fetch-depth: 0
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Releasing tag: $TAG"
+
+      - name: Verify tag exists
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::Tag '$TAG' does not exist in this repository."
+            exit 1
+          fi
+
+      - name: Verify tag is on main
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$TAG" origin/main; then
+            echo "::error::Tag '$TAG' is not an ancestor of main. Releases must be cut from the main branch."
+            exit 1
+          fi
+          echo "Tag '$TAG' is reachable from main."
+
+      - name: Validate PowerShell script
+        shell: pwsh
+        run: |
+          $path = Join-Path $env:GITHUB_WORKSPACE 'src/AzIPFetcher.ps1'
+          if (-not (Test-Path $path)) {
+            Write-Output "::error::Script not found at src/AzIPFetcher.ps1"
+            exit 1
+          }
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$null, [ref]$errors) | Out-Null
+          if ($errors) {
+            foreach ($e in $errors) {
+              Write-Output "::error file=src/AzIPFetcher.ps1,line=$($e.Extent.StartLineNumber)::$($e.Message)"
+            }
+            exit 1
+          }
+          Write-Output "Parse OK"
+
+      - name: Verify script version matches tag
+        shell: pwsh
+        run: |
+          $tag = '${{ steps.tag.outputs.tag }}'
+          $expected = $tag.TrimStart('v')
+          $path = Join-Path $env:GITHUB_WORKSPACE 'src/AzIPFetcher.ps1'
+          $match = Select-String -Path $path -Pattern '^\$ScriptVersion\s*=\s*"([^"]+)"' | Select-Object -First 1
+          if (-not $match) {
+            Write-Output "::error::Could not find `$ScriptVersion in src/AzIPFetcher.ps1"
+            exit 1
+          }
+          $actual = $match.Matches[0].Groups[1].Value
+          if ($actual -ne $expected) {
+            Write-Output "::error::Tag '$tag' expects `$ScriptVersion '$expected' but found '$actual'."
+            exit 1
+          }
+          Write-Output "Version check OK: $actual"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release '$TAG' already exists; nothing to do."
+            exit 0
+          fi
+          gh release create "$TAG" \
+            --title "AzIPFetcher $TAG" \
+            --generate-notes \
+            --verify-tag
